@@ -1,8 +1,8 @@
-use std::env;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
+use clap::{App, Arg};
 use regex::Regex;
 use walkdir::WalkDir;
 
@@ -105,15 +105,28 @@ fn process_file(path: &Path) -> std::io::Result<()> {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let matches = App::new("Remove Debug Lines")
+        .version("1.0")
+        .author("Assistant")
+        .about("Removes lines containing pdb or ipdb debugging statements from Python files.")
+        .arg(
+            Arg::with_name("TARGET")
+                .help("Target file or directory")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::with_name("extension")
+                .short("e")
+                .long("extension")
+                .value_name("EXT")
+                .help("File extension to filter (default: py)")
+                .takes_value(true),
+        )
+        .get_matches();
 
-    if args.len() != 2 {
-        eprintln!("Usage: remove_debug <TARGET>");
-        return;
-    }
-
-    let target = &args[1];
-    let extension = "py";
+    let target = matches.value_of("TARGET").unwrap();
+    let extension = matches.value_of("extension").unwrap_or("py");
 
     let target_path = Path::new(target);
 
