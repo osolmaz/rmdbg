@@ -33,8 +33,6 @@ fn process_file(path: &Path) -> std::io::Result<()> {
         Regex::new(r"^\s*import\s+(pdb|ipdb);\s*(pdb|ipdb)\.set_trace\(\)\s*$").unwrap();
 
     let mut buffer = Vec::new();
-    let mut indent = String::new();
-    let mut module_name = String::new();
 
     let lines: Vec<String> = reader.lines().collect::<Result<_, _>>()?;
     let mut i = 0;
@@ -57,8 +55,8 @@ fn process_file(path: &Path) -> std::io::Result<()> {
         // Check for the multiline pattern start
         if let Some(caps) = re_import.captures(line) {
             buffer.push(line.clone());
-            indent = caps.get(1).unwrap().as_str().to_string();
-            module_name = caps.get(2).unwrap().as_str().to_string();
+            let indent = caps.get(1).unwrap().as_str().to_string();
+            let module_name = caps.get(2).unwrap().as_str().to_string();
             i += 1;
 
             // Buffer any whitespace-only lines
@@ -75,8 +73,6 @@ fn process_file(path: &Path) -> std::io::Result<()> {
                 if next_line.trim() == expected_set_trace.trim() {
                     // Skip the buffered lines and the current line
                     buffer.clear();
-                    indent.clear();
-                    module_name.clear();
                     i += 1;
                     continue;
                 }
@@ -88,8 +84,6 @@ fn process_file(path: &Path) -> std::io::Result<()> {
                 writer.write_all(b"\n")?;
             }
             buffer.clear();
-            indent.clear();
-            module_name.clear();
         } else {
             // Write the line as it doesn't match any patterns
             writer.write_all(line.as_bytes())?;
@@ -110,9 +104,10 @@ fn main() {
         .author("Assistant")
         .about("Removes lines containing pdb or ipdb debugging statements from Python files.")
         .arg(
-            Arg::with_name("TARGET")
-                .help("Target file or directory")
+            Arg::with_name("TARGETS")
+                .help("Target files or directories")
                 .required(true)
+                .multiple(true)
                 .index(1),
         )
         .arg(
@@ -125,38 +120,43 @@ fn main() {
         )
         .get_matches();
 
-    let target = matches.value_of("TARGET").unwrap();
+    let targets: Vec<_> = matches.values_of("TARGETS").unwrap().collect();
     let extension = matches.value_of("extension").unwrap_or("py");
 
-    let target_path = Path::new(target);
+    for target in targets {
+        let target_path = Path::new(target);
 
-    if target_path.is_file() {
-        if target_path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map_or(false, |ext| ext == extension)
-        {
-            if let Err(e) = process_file(target_path) {
-                eprintln!("Error processing file {}: {}", target, e);
+        if target_path.is_file() {
+            if target_path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map_or(false, |ext| ext == extension)
+            {
+                if let Err(e) = process_file(target_path) {
+                    eprintln!("Error processing file {}: {}", target, e);
+                }
             }
-        }
-    } else if target_path.is_dir() {
-        for entry in WalkDir::new(target_path)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| {
-                e.path().is_file()
-                    && e.path()
-                        .extension()
-                        .and_then(|ext| ext.to_str())
-                        .map_or(false, |ext| ext == extension)
-            })
-        {
-            if let Err(e) = process_file(entry.path()) {
-                eprintln!("Error processing file {}: {}", entry.path().display(), e);
+        } else if target_path.is_dir() {
+            for entry in WalkDir::new(target_path)
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| {
+                    e.path().is_file()
+                        && e.path()
+                            .extension()
+                            .and_then(|ext| ext.to_str())
+                            .map_or(false, |ext| ext == extension)
+                })
+            {
+                if let Err(e) = process_file(entry.path()) {
+                    eprintln!("Error processing file {}: {}", entry.path().display(), e);
+                }
             }
+        } else {
+            eprintln!(
+                "The target path '{}' is neither a file nor a directory.",
+                target
+            );
         }
-    } else {
-        eprintln!("The target path is neither a file nor a directory.");
     }
 }
